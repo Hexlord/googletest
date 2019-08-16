@@ -38,6 +38,7 @@
 #include <memory>
 #include <string>
 #include <sstream>
+#include <type_traits>
 #include <vector>
 #include "gmock/gmock.h"
 #include "gmock/internal/gmock-port.h"
@@ -56,8 +57,6 @@
 #if GTEST_OS_CYGWIN
 # include <sys/types.h>  // For ssize_t. NOLINT
 #endif
-
-class ProtocolMessage;
 
 namespace proto2 {
 class Message;
@@ -123,15 +122,9 @@ TEST(ConvertIdentifierNameToWordsTest, WorksWhenNameIsMixture) {
 }
 
 TEST(PointeeOfTest, WorksForSmartPointers) {
-  CompileAssertTypesEqual<const char,
-      PointeeOf<internal::linked_ptr<const char> >::type>();
-#if GTEST_HAS_STD_UNIQUE_PTR_
   CompileAssertTypesEqual<int, PointeeOf<std::unique_ptr<int> >::type>();
-#endif  // GTEST_HAS_STD_UNIQUE_PTR_
-#if GTEST_HAS_STD_SHARED_PTR_
   CompileAssertTypesEqual<std::string,
                           PointeeOf<std::shared_ptr<std::string> >::type>();
-#endif  // GTEST_HAS_STD_SHARED_PTR_
 }
 
 TEST(PointeeOfTest, WorksForRawPointers) {
@@ -141,25 +134,16 @@ TEST(PointeeOfTest, WorksForRawPointers) {
 }
 
 TEST(GetRawPointerTest, WorksForSmartPointers) {
-#if GTEST_HAS_STD_UNIQUE_PTR_
   const char* const raw_p1 = new const char('a');  // NOLINT
   const std::unique_ptr<const char> p1(raw_p1);
   EXPECT_EQ(raw_p1, GetRawPointer(p1));
-#endif  // GTEST_HAS_STD_UNIQUE_PTR_
-#if GTEST_HAS_STD_SHARED_PTR_
   double* const raw_p2 = new double(2.5);  // NOLINT
   const std::shared_ptr<double> p2(raw_p2);
   EXPECT_EQ(raw_p2, GetRawPointer(p2));
-#endif  // GTEST_HAS_STD_SHARED_PTR_
-
-  const char* const raw_p4 = new const char('a');  // NOLINT
-  const internal::linked_ptr<const char> p4(raw_p4);
-  EXPECT_EQ(raw_p4, GetRawPointer(p4));
 }
 
 TEST(GetRawPointerTest, WorksForRawPointers) {
   int* p = nullptr;
-  // Don't use EXPECT_EQ as no NULL-testing magic on Symbian.
   EXPECT_TRUE(nullptr == GetRawPointer(p));
   int n = 1;
   EXPECT_EQ(&n, GetRawPointer(&n));
@@ -385,11 +369,9 @@ TEST(ExpectTest, FailsNonfatallyOnFalse) {
 
 class LogIsVisibleTest : public ::testing::Test {
  protected:
-  virtual void SetUp() {
-    original_verbose_ = GMOCK_FLAG(verbose);
-  }
+  void SetUp() override { original_verbose_ = GMOCK_FLAG(verbose); }
 
-  virtual void TearDown() { GMOCK_FLAG(verbose) = original_verbose_; }
+  void TearDown() override { GMOCK_FLAG(verbose) = original_verbose_; }
 
   std::string original_verbose_;
 };
@@ -448,11 +430,11 @@ TEST(LogTest, NoStackTraceWhenStackFramesToSkipIsNegative) {
 }
 
 struct MockStackTraceGetter : testing::internal::OsStackTraceGetterInterface {
-  virtual std::string CurrentStackTrace(int max_depth, int skip_count) {
+  std::string CurrentStackTrace(int max_depth, int skip_count) override {
     return (testing::Message() << max_depth << "::" << skip_count << "\n")
         .GetString();
   }
-  virtual void UponLeavingGTest() {}
+  void UponLeavingGTest() override {}
 };
 
 // Tests that in opt mode, a positive stack_frames_to_skip argument is
@@ -537,25 +519,12 @@ TEST(TypeTraitsTest, is_reference) {
   EXPECT_TRUE(is_reference<const int&>::value);
 }
 
-TEST(TypeTraitsTest, is_pointer) {
-  EXPECT_FALSE(is_pointer<int>::value);
-  EXPECT_FALSE(is_pointer<char&>::value);
-  EXPECT_TRUE(is_pointer<const int*>::value);
-}
-
-TEST(TypeTraitsTest, type_equals) {
-  EXPECT_FALSE((type_equals<int, const int>::value));
-  EXPECT_FALSE((type_equals<int, int&>::value));
-  EXPECT_FALSE((type_equals<int, double>::value));
-  EXPECT_TRUE((type_equals<char, char>::value));
-}
-
 TEST(TypeTraitsTest, remove_reference) {
-  EXPECT_TRUE((type_equals<char, remove_reference<char&>::type>::value));
-  EXPECT_TRUE((type_equals<const int,
-               remove_reference<const int&>::type>::value));
-  EXPECT_TRUE((type_equals<int, remove_reference<int>::type>::value));
-  EXPECT_TRUE((type_equals<double*, remove_reference<double*>::type>::value));
+  EXPECT_TRUE((std::is_same<char, remove_reference<char&>::type>::value));
+  EXPECT_TRUE(
+      (std::is_same<const int, remove_reference<const int&>::type>::value));
+  EXPECT_TRUE((std::is_same<int, remove_reference<int>::type>::value));
+  EXPECT_TRUE((std::is_same<double*, remove_reference<double*>::type>::value));
 }
 
 #if GTEST_HAS_STREAM_REDIRECTION
@@ -581,7 +550,7 @@ void ExpectCallLogger() {
   DummyMock mock;
   EXPECT_CALL(mock, TestMethod());
   mock.TestMethod();
-};
+}
 
 // Verifies that EXPECT_CALL logs if the --gmock_verbose flag is set to "info".
 TEST(ExpectCallTest, LogsWhenVerbosityIsInfo) {
@@ -604,7 +573,7 @@ TEST(ExpectCallTest,  DoesNotLogWhenVerbosityIsError) {
 void OnCallLogger() {
   DummyMock mock;
   ON_CALL(mock, TestMethod());
-};
+}
 
 // Verifies that ON_CALL logs if the --gmock_verbose flag is set to "info".
 TEST(OnCallTest, LogsWhenVerbosityIsInfo) {
@@ -687,7 +656,7 @@ TEST(StlContainerViewTest, WorksForDynamicNativeArray) {
                      StlContainerView<std::tuple<const int*, size_t> >::type>();
   StaticAssertTypeEq<
       NativeArray<double>,
-      StlContainerView<std::tuple<linked_ptr<double>, int> >::type>();
+      StlContainerView<std::tuple<std::shared_ptr<double>, int> >::type>();
 
   StaticAssertTypeEq<
       const NativeArray<int>,
@@ -711,6 +680,70 @@ TEST(StlContainerViewTest, WorksForDynamicNativeArray) {
   // Makes sure a1 and a3 aren't aliases.
   a1[0] = 3;
   EXPECT_EQ(0, a3.begin()[0]);
+}
+
+// Tests the Function template struct.
+
+TEST(FunctionTest, Nullary) {
+  typedef Function<int()> F;  // NOLINT
+  EXPECT_EQ(0u, F::ArgumentCount);
+  CompileAssertTypesEqual<int, F::Result>();
+  CompileAssertTypesEqual<std::tuple<>, F::ArgumentTuple>();
+  CompileAssertTypesEqual<std::tuple<>, F::ArgumentMatcherTuple>();
+  CompileAssertTypesEqual<void(), F::MakeResultVoid>();
+  CompileAssertTypesEqual<IgnoredValue(), F::MakeResultIgnoredValue>();
+}
+
+TEST(FunctionTest, Unary) {
+  typedef Function<int(bool)> F;  // NOLINT
+  EXPECT_EQ(1u, F::ArgumentCount);
+  CompileAssertTypesEqual<int, F::Result>();
+  CompileAssertTypesEqual<bool, F::Arg<0>::type>();
+  CompileAssertTypesEqual<std::tuple<bool>, F::ArgumentTuple>();
+  CompileAssertTypesEqual<std::tuple<Matcher<bool> >,
+                          F::ArgumentMatcherTuple>();
+  CompileAssertTypesEqual<void(bool), F::MakeResultVoid>();  // NOLINT
+  CompileAssertTypesEqual<IgnoredValue(bool),  // NOLINT
+      F::MakeResultIgnoredValue>();
+}
+
+TEST(FunctionTest, Binary) {
+  typedef Function<int(bool, const long&)> F;  // NOLINT
+  EXPECT_EQ(2u, F::ArgumentCount);
+  CompileAssertTypesEqual<int, F::Result>();
+  CompileAssertTypesEqual<bool, F::Arg<0>::type>();
+  CompileAssertTypesEqual<const long&, F::Arg<1>::type>();  // NOLINT
+  CompileAssertTypesEqual<std::tuple<bool, const long&>,  // NOLINT
+                          F::ArgumentTuple>();
+  CompileAssertTypesEqual<
+      std::tuple<Matcher<bool>, Matcher<const long&> >,  // NOLINT
+      F::ArgumentMatcherTuple>();
+  CompileAssertTypesEqual<void(bool, const long&), F::MakeResultVoid>();  // NOLINT
+  CompileAssertTypesEqual<IgnoredValue(bool, const long&),  // NOLINT
+      F::MakeResultIgnoredValue>();
+}
+
+TEST(FunctionTest, LongArgumentList) {
+  typedef Function<char(bool, int, char*, int&, const long&)> F;  // NOLINT
+  EXPECT_EQ(5u, F::ArgumentCount);
+  CompileAssertTypesEqual<char, F::Result>();
+  CompileAssertTypesEqual<bool, F::Arg<0>::type>();
+  CompileAssertTypesEqual<int, F::Arg<1>::type>();
+  CompileAssertTypesEqual<char*, F::Arg<2>::type>();
+  CompileAssertTypesEqual<int&, F::Arg<3>::type>();
+  CompileAssertTypesEqual<const long&, F::Arg<4>::type>();  // NOLINT
+  CompileAssertTypesEqual<
+      std::tuple<bool, int, char*, int&, const long&>,  // NOLINT
+      F::ArgumentTuple>();
+  CompileAssertTypesEqual<
+      std::tuple<Matcher<bool>, Matcher<int>, Matcher<char*>, Matcher<int&>,
+                 Matcher<const long&> >,  // NOLINT
+      F::ArgumentMatcherTuple>();
+  CompileAssertTypesEqual<void(bool, int, char*, int&, const long&),  // NOLINT
+                          F::MakeResultVoid>();
+  CompileAssertTypesEqual<
+      IgnoredValue(bool, int, char*, int&, const long&),  // NOLINT
+      F::MakeResultIgnoredValue>();
 }
 
 }  // namespace
